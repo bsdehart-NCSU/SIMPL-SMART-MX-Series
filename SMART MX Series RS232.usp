@@ -1,0 +1,1055 @@
+/*******************************************************************************************
+  SIMPL+ Module Information
+  (Fill in comments below)
+*******************************************************************************************/
+/*
+Dealer Name: NC State DELTA
+System Name: SMART MX Series RS-232 Module
+System Number:
+Programmer: Brandon DeHart / Gemini
+Comments: Controls SMART MX (V5) series displays via RS-232.
+          Handles power, input selection, brightness, volume, mute, freeze,
+          screen shade, info queries, and status polling.
+         v3.2: Added timeout/revert logic to the emulation feature.
+*/
+
+//================================================================================
+// COMPILER DIRECTIVES
+//================================================================================
+#SYMBOL_NAME "SMART Display MX (V5) RS-232 Control v3.1"
+#HINT "Full RS-232 control. Poll rate in seconds. Default 15s. Includes emulation and robust power lock."
+#PRINT_TO_TRACE // Enable Print() to Crestron Toolbox SIMPL Debugger
+#ENABLE_STACK_CHECKING // Good for debugging stack overflows
+#ENABLE_TRACE // Enhanced debugging
+#CATEGORY "24" // TV/Video Projector
+#HELP_PDF_FILE "SMART MX Series RS-232 Module Help.pdf"
+
+
+#DEFINE_CONSTANT MAX_SERIAL_BUFFER_SIZE 255
+#DEFINE_CONSTANT MAX_COMMAND_SIZE 60
+#DEFINE_CONSTANT MAX_VALUE_SIZE 30
+#DEFINE_CONSTANT DEFAULT_POLL_RATE_S 15      // Default poll rate: 15 seconds
+#DEFINE_CONSTANT MIN_POLL_RATE_S 5       // Minimum poll rate: 5 seconds
+#DEFINE_CONSTANT MAX_POLL_RATE_S 300     // Maximum poll rate: 300 seconds (5 minutes)
+#DEFINE_CONSTANT RESPONSE_TIMEOUT 300          // 3 seconds for response timeout (300 hundredths)
+#DEFINE_CONSTANT POWER_TRANSITION_TIMEOUT 2000 // 20 seconds (2000 hundredths) for power state change timeout
+#DEFINE_CONSTANT SHORT_DELAY 50                // 0.5 seconds (50 hundredths)
+#DEFINE_CONSTANT VERY_SHORT_DELAY 20           // 0.2 seconds (20 hundredths)
+#DEFINE_CONSTANT INFO_STRING_SIZE 60
+#DEFINE_CONSTANT POLL_CHECK_INTERVAL 100       // 1 second (100hs) for checking if polling should start/resume work
+
+// RS-232 Command Terminators
+#DEFINE_CONSTANT CR "\x0D"
+// LF is used as an integer literal 0x0A in comparisons
+
+//================================================================================
+// INPUTS AND OUTPUTS (Organized and Aligned by Function)
+//================================================================================
+
+//-------------------- Power Control & Feedback --------------------
+DIGITAL_INPUT Power_On_trig;               DIGITAL_OUTPUT Power_Is_On_fb;
+DIGITAL_INPUT Power_Off_trig;              DIGITAL_OUTPUT Power_Is_Off_fb;
+DIGITAL_INPUT Power_Standby_trig;          DIGITAL_OUTPUT Power_Is_Standby_fb;
+DIGITAL_INPUT Power_Toggle_trig;           DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT _SKIP_;                      DIGITAL_OUTPUT _SKIP_; // Separator
+
+//-------------------- Input Selection & Feedback --------------------
+DIGITAL_INPUT Input_Select_HDMI1_trig;     DIGITAL_OUTPUT Is_HDMI1_fb;
+DIGITAL_INPUT Input_Select_HDMI2_trig;     DIGITAL_OUTPUT Is_HDMI2_fb;
+DIGITAL_INPUT Input_Select_HDMI3_trig;     DIGITAL_OUTPUT Is_HDMI3_fb;
+DIGITAL_INPUT Input_Select_HDMI4_trig;     DIGITAL_OUTPUT Is_HDMI4_fb;
+DIGITAL_INPUT Input_Select_VGA1_trig;      DIGITAL_OUTPUT Is_VGA1_fb;
+DIGITAL_INPUT Input_Select_OPS1_trig;      DIGITAL_OUTPUT Is_OPS1_fb;
+DIGITAL_INPUT Input_Select_USBC1_trig;     DIGITAL_OUTPUT Is_USBC1_fb;
+DIGITAL_INPUT Input_Select_USBC2_trig;     DIGITAL_OUTPUT Is_USBC2_fb;
+DIGITAL_INPUT Input_Select_Android_trig;   DIGITAL_OUTPUT Is_Android_fb;
+DIGITAL_INPUT _SKIP_;                      DIGITAL_OUTPUT _SKIP_; // Separator
+
+//-------------------- Brightness Control & Feedback --------------------
+ANALOG_INPUT Brightness_Level_ain;         ANALOG_OUTPUT Brightness_Level_fb;
+DIGITAL_INPUT Set_Brightness_Level_trig;   DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Brightness_Up_trig;          DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Brightness_Down_trig;        DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT _SKIP_;                      DIGITAL_OUTPUT _SKIP_; // Separator
+
+//-------------------- Volume Control & Feedback --------------------
+ANALOG_INPUT Volume_Level_ain;             ANALOG_OUTPUT Volume_Level_fb;
+DIGITAL_INPUT Set_Volume_Level_trig;       DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Volume_Up_trig;              DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Volume_Down_trig;            DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT _SKIP_;                      DIGITAL_OUTPUT _SKIP_; // Separator
+
+//-------------------- Speaker Mute Control & Feedback --------------------
+DIGITAL_INPUT Mute_Speakers_On_trig;       DIGITAL_OUTPUT Speakers_Are_Muted_fb;
+DIGITAL_INPUT Mute_Speakers_Off_trig;      DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT _SKIP_;                      DIGITAL_OUTPUT _SKIP_; // Separator
+
+//-------------------- Microphone Mute Control & Feedback --------------------
+DIGITAL_INPUT Mute_Mic_On_trig;            DIGITAL_OUTPUT Mic_Is_Muted_fb;
+DIGITAL_INPUT Mute_Mic_Off_trig;           DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT _SKIP_;                      DIGITAL_OUTPUT _SKIP_; // Separator
+
+//-------------------- Video Freeze Control & Feedback --------------------
+DIGITAL_INPUT Video_Freeze_On_trig;        DIGITAL_OUTPUT Video_Is_Frozen_fb;
+DIGITAL_INPUT Video_Freeze_Off_trig;       DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT _SKIP_;                      DIGITAL_OUTPUT _SKIP_; // Separator
+
+//-------------------- Screen Shade Control & Feedback --------------------
+DIGITAL_INPUT Screen_Shade_On_trig;        DIGITAL_OUTPUT Screen_Shade_Is_On_fb;
+DIGITAL_INPUT Screen_Shade_Off_trig;       DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT _SKIP_;                      DIGITAL_OUTPUT _SKIP_; // Separator
+
+//-------------------- Information Queries & Feedback --------------------
+DIGITAL_INPUT Query_Firmware_Version_trig; STRING_OUTPUT Firmware_Version_fb$;
+DIGITAL_INPUT Query_Model_Number_trig;     STRING_OUTPUT Model_Number_fb$;
+DIGITAL_INPUT Query_Serial_Number_trig;    STRING_OUTPUT Serial_Number_fb$;
+DIGITAL_INPUT Query_Part_Number_trig;      STRING_OUTPUT Part_Number_fb$;
+DIGITAL_INPUT _SKIP_;                      STRING_OUTPUT _SKIP_; // Separator
+
+//-------------------- Polling & General Query --------------------
+DIGITAL_INPUT Enable_Polling;              DIGITAL_OUTPUT Polling_Active_fb;
+ANALOG_INPUT Poll_Rate_seconds;            DIGITAL_OUTPUT _SKIP_; // Input is in WHOLE seconds
+DIGITAL_INPUT Enable_Emulation;            DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Query_All_Status_trig;       DIGITAL_OUTPUT _SKIP_;
+// Granular Polling Enables
+DIGITAL_INPUT Poll_Input_Source;           DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Poll_Brightness;             DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Poll_Volume;                 DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Poll_Speaker_Mute;           DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Poll_Mic_Mute;               DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Poll_Video_Freeze;           DIGITAL_OUTPUT _SKIP_;
+DIGITAL_INPUT Poll_Screen_Shade;           DIGITAL_OUTPUT _SKIP_;
+
+//-------------------- Serial Communication & Debug --------------------
+DIGITAL_INPUT _SKIP_;                      STRING_OUTPUT Debug_fb$;
+BUFFER_INPUT RS232_rx$[MAX_SERIAL_BUFFER_SIZE]; STRING_OUTPUT RS232_tx$;
+
+//================================================================================
+// GLOBAL VARIABLES
+//================================================================================
+INTEGER g_nPowerStateKnown;
+INTEGER g_sCurrentInputKnown;
+STRING gsCurrentPowerState[MAX_VALUE_SIZE];
+STRING gsCurrentInputSource[MAX_VALUE_SIZE];
+STRING gsCurrentBrightness[MAX_VALUE_SIZE];
+STRING gsCurrentVolume[MAX_VALUE_SIZE];
+STRING gsCurrentSpeakersMuteState[MAX_VALUE_SIZE];
+STRING gsCurrentMicMuteState[MAX_VALUE_SIZE];
+STRING gsCurrentFreezeState[MAX_VALUE_SIZE];
+STRING gsCurrentScreenShadeState[MAX_VALUE_SIZE];
+
+INTEGER g_bQueryPowerPending, g_bQueryInputPending, g_bQueryBrightnessPending;
+INTEGER g_bQueryVolumePending, g_bQuerySpeakersMutePending, g_bQueryMicMutePending;
+INTEGER g_bQueryFreezePending, g_bQueryScreenShadePending;
+INTEGER g_bQueryFirmwareVersionPending, g_bQueryModelNumberPending;
+INTEGER g_bQuerySerialNumberPending, g_bQueryPartNumberPending;
+
+INTEGER g_bPollingEnabled;
+INTEGER g_bInitialized;
+INTEGER g_nCurrentPollInterval_hs; // Stored in hundredths of seconds
+
+INTEGER g_bInPowerTransition; 
+STRING gsRequestedPowerState[MAX_VALUE_SIZE]; 
+INTEGER g_bEmulationActive;
+
+//================================================================================
+// HELPER FUNCTIONS
+//================================================================================
+
+STRING_FUNCTION TRIM_RESPONSE(STRING raw_response)
+{
+    STRING sTemp[MAX_SERIAL_BUFFER_SIZE];
+    STRING sEmptyString[1];
+    INTEGER nLen, nStart, nEnd;
+    INTEGER nCurrentByte;
+    sEmptyString = "";
+    nLen = LEN(raw_response);
+    IF (nLen = 0) { RETURN(sEmptyString); }
+    nStart = 1;
+    WHILE (nStart <= nLen) {
+        nCurrentByte = BYTE(raw_response, nStart);
+        IF (nCurrentByte > 32) { IF (nCurrentByte < 127) { BREAK; } }
+        nStart = nStart + 1;
+    }
+    nEnd = nLen;
+    WHILE (nEnd >= nStart) {
+        nCurrentByte = BYTE(raw_response, nEnd);
+        IF (nCurrentByte > 32) { IF (nCurrentByte < 127) { BREAK; } }
+        nEnd = nEnd - 1;
+    }
+    IF (nStart > nEnd) { RETURN(sEmptyString); }
+    sTemp = MID(raw_response, nStart, (nEnd - nStart) + 1);
+    RETURN(sTemp);
+}
+
+FUNCTION SendCommand(STRING command_string)
+{
+    RS232_tx$ = command_string + CR;
+}
+
+FUNCTION UpdatePowerFeedback()
+{
+    Power_Is_On_fb = (gsCurrentPowerState = "on");
+    Power_Is_Off_fb = (gsCurrentPowerState = "off");
+    Power_Is_Standby_fb = (gsCurrentPowerState = "standby");
+    IF (Power_Is_On_fb) { g_nPowerStateKnown = 1; }
+    ELSE IF (Power_Is_Off_fb) { g_nPowerStateKnown = 1; }
+    ELSE IF (Power_Is_Standby_fb) { g_nPowerStateKnown = 1; }
+}
+
+FUNCTION UpdateInputFeedback()
+{
+    Is_HDMI1_fb = (gsCurrentInputSource = "hdmi1");
+    Is_HDMI2_fb = (gsCurrentInputSource = "hdmi2");
+    Is_HDMI3_fb = (gsCurrentInputSource = "hdmi3");
+    Is_HDMI4_fb = (gsCurrentInputSource = "hdmi4");
+    Is_VGA1_fb = (gsCurrentInputSource = "vga1");
+    Is_OPS1_fb = (gsCurrentInputSource = "ops1");
+    Is_USBC1_fb = (gsCurrentInputSource = "usbc1");
+    Is_USBC2_fb = (gsCurrentInputSource = "usbc2");
+    Is_Android_fb = (gsCurrentInputSource = "android");
+    IF (Is_HDMI1_fb) { g_sCurrentInputKnown = 1; } ELSE IF (Is_HDMI2_fb) { g_sCurrentInputKnown = 1; }
+    ELSE IF (Is_HDMI3_fb) { g_sCurrentInputKnown = 1; } ELSE IF (Is_HDMI4_fb) { g_sCurrentInputKnown = 1; }
+    ELSE IF (Is_VGA1_fb) { g_sCurrentInputKnown = 1; } ELSE IF (Is_OPS1_fb) { g_sCurrentInputKnown = 1; }
+    ELSE IF (Is_USBC1_fb) { g_sCurrentInputKnown = 1; } ELSE IF (Is_USBC2_fb) { g_sCurrentInputKnown = 1; }
+    ELSE IF (Is_Android_fb) { g_sCurrentInputKnown = 1; }
+}
+
+FUNCTION UpdateBrightnessFeedback() { Brightness_Level_fb = ATOI(gsCurrentBrightness); }
+FUNCTION UpdateVolumeFeedback() { Volume_Level_fb = ATOI(gsCurrentVolume); }
+FUNCTION UpdateSpeakersMuteFeedback() { Speakers_Are_Muted_fb = (gsCurrentSpeakersMuteState = "on"); }
+FUNCTION UpdateMicMuteFeedback() { Mic_Is_Muted_fb = (gsCurrentMicMuteState = "on"); }
+FUNCTION UpdateFreezeFeedback() { Video_Is_Frozen_fb = (gsCurrentFreezeState = "on"); }
+FUNCTION UpdateScreenShadeFeedback() { Screen_Shade_Is_On_fb = (gsCurrentScreenShadeState = "on"); }
+
+FUNCTION ProcessPowerResponse(STRING response_data, INTEGER is_async)
+{
+    STRING sReceivedState[MAX_VALUE_SIZE];
+
+    Print("ProcessPowerResponse: Entered with data '%s' (Async: %d).\n", response_data, is_async);
+    g_bEmulationActive = 0; // Live feedback received, so emulation is no longer considered active
+    
+    sReceivedState = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=", response_data)));
+    gsCurrentPowerState = sReceivedState;
+    UpdatePowerFeedback();
+    
+    g_bQueryPowerPending = 0;
+    
+    IF (g_bInPowerTransition = 1)
+    {
+        IF (is_async = 1)
+        {
+            IF (sReceivedState = gsRequestedPowerState)
+            {
+                Print("ProcessPowerResponse: Confirmed power transition to '%s' via async.\n", sReceivedState);
+                Debug_fb$ = "Pwr: Transition OK";
+                g_bInPowerTransition = 0;
+                gsRequestedPowerState = ""; 
+            }
+        }
+    }
+
+    Debug_fb$ = "Resp: Pwr " + gsCurrentPowerState;
+    Print("ProcessPowerResponse: Exiting. Current state: %s\n", gsCurrentPowerState);
+}
+
+FUNCTION ProcessInputResponse(STRING response_data) 
+{ 
+    g_bEmulationActive = 0;
+    gsCurrentInputSource = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data))); 
+    UpdateInputFeedback(); 
+    g_bQueryInputPending = 0; 
+    Debug_fb$ = "Resp: Input " + gsCurrentInputSource;
+}
+FUNCTION ProcessBrightnessResponse(STRING response_data) 
+{ 
+    g_bEmulationActive = 0;
+    gsCurrentBrightness = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data))); 
+    UpdateBrightnessFeedback(); 
+    g_bQueryBrightnessPending = 0; 
+    Debug_fb$ = "Resp: Bright " + gsCurrentBrightness;
+}
+FUNCTION ProcessVolumeResponse(STRING response_data) 
+{ 
+    g_bEmulationActive = 0;
+    gsCurrentVolume = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data))); 
+    UpdateVolumeFeedback(); 
+    g_bQueryVolumePending = 0; 
+    Debug_fb$ = "Resp: Vol " + gsCurrentVolume;
+}
+FUNCTION ProcessSpeakersMuteResponse(STRING response_data) 
+{ 
+    g_bEmulationActive = 0;
+    gsCurrentSpeakersMuteState = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data)));
+    UpdateSpeakersMuteFeedback();
+    g_bQuerySpeakersMutePending = 0;
+    Debug_fb$ = "Resp: SpkMute " + gsCurrentSpeakersMuteState;
+}
+FUNCTION ProcessMicMuteResponse(STRING response_data) 
+{ 
+    g_bEmulationActive = 0;
+    gsCurrentMicMuteState = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data))); 
+    UpdateMicMuteFeedback(); 
+    g_bQueryMicMutePending = 0; 
+    Debug_fb$ = "Resp: MicMute " + gsCurrentMicMuteState;
+}
+FUNCTION ProcessFreezeResponse(STRING response_data) 
+{ 
+    g_bEmulationActive = 0;
+    gsCurrentFreezeState = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data))); 
+    UpdateFreezeFeedback(); 
+    g_bQueryFreezePending = 0; 
+    Debug_fb$ = "Resp: Freeze " + gsCurrentFreezeState;
+}
+FUNCTION ProcessScreenShadeResponse(STRING response_data) 
+{ 
+    g_bEmulationActive = 0;
+    gsCurrentScreenShadeState = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data))); 
+    UpdateScreenShadeFeedback(); 
+    g_bQueryScreenShadePending = 0; 
+    Debug_fb$ = "Resp: Shade " + gsCurrentScreenShadeState;
+}
+FUNCTION ProcessFirmwareVersionResponse(STRING response_data) { Firmware_Version_fb$ = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data))); g_bQueryFirmwareVersionPending = 0; }
+FUNCTION ProcessModelNumberResponse(STRING response_data) { Model_Number_fb$ = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data))); g_bQueryModelNumberPending = 0; }
+FUNCTION ProcessSerialNumberResponse(STRING response_data) { Serial_Number_fb$ = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data))); g_bQuerySerialNumberPending = 0; }
+FUNCTION ProcessPartNumberResponse(STRING response_data) { Part_Number_fb$ = TRIM_RESPONSE(RIGHT(response_data, LEN(response_data) - FIND("=",response_data))); g_bQueryPartNumberPending = 0; }
+
+FUNCTION QueryPowerState()
+{
+    IF (g_bQueryPowerPending = 0)
+    {
+        g_bQueryPowerPending = 1;
+        SendCommand("get powerstate");
+        Print("QueryPowerState: Sent get powerstate, Pending=1. Time: %s\n", TIME());
+        WAIT(RESPONSE_TIMEOUT, PowerQueryTimeout)
+        {
+            IF (g_bQueryPowerPending = 1)
+            {
+                Debug_fb$ = "Timeout: get powerstate";
+                g_bQueryPowerPending = 0;
+                Print("PowerQueryTimeout: Timed out. Pending=0. Time: %s\n", TIME());
+            }
+        }
+    }
+}
+
+FUNCTION QueryInputSource()
+{
+    IF (g_bQueryInputPending = 0)
+    {
+        g_bQueryInputPending = 1;
+        SendCommand("get input");
+        Print("QueryInputSource: Sent get input, Pending=1. Time: %s\n", TIME());
+        WAIT(RESPONSE_TIMEOUT, InputQueryTimeout)
+        {
+            IF (g_bQueryInputPending = 1)
+            {
+                Debug_fb$ = "Timeout: get input";
+                g_bQueryInputPending = 0;
+                Print("InputQueryTimeout: Timed out. Pending=0. Time: %s\n", TIME());
+            }
+        }
+    }
+}
+
+FUNCTION QueryBrightness()
+{
+    IF (g_bQueryBrightnessPending = 0)
+    {
+        g_bQueryBrightnessPending = 1;
+        SendCommand("get brightness");
+        Print("QueryBrightness: Sent get brightness, Pending=1. Time: %s\n", TIME());
+        WAIT(RESPONSE_TIMEOUT, BrightnessQueryTimeout)
+        {
+            IF (g_bQueryBrightnessPending = 1)
+            {
+                Debug_fb$ = "Timeout: get brightness";
+                g_bQueryBrightnessPending = 0;
+                Print("BrightnessQueryTimeout: Timed out. Pending=0. Time: %s\n", TIME());
+            }
+        }
+    }
+}
+
+FUNCTION QueryVolume()
+{
+    IF (g_bQueryVolumePending = 0)
+    {
+        g_bQueryVolumePending = 1;
+        SendCommand("get volume");
+        Print("QueryVolume: Sent get volume, Pending=1. Time: %s\n", TIME());
+        WAIT(RESPONSE_TIMEOUT, VolumeQueryTimeout)
+        {
+            IF (g_bQueryVolumePending = 1)
+            {
+                Debug_fb$ = "Timeout: get volume";
+                g_bQueryVolumePending = 0;
+                Print("VolumeQueryTimeout: Timed out. Pending=0. Time: %s\n", TIME());
+            }
+        }
+    }
+}
+
+FUNCTION QuerySpeakersMuteStatus()
+{
+    IF (g_bQuerySpeakersMutePending = 0)
+    {
+        g_bQuerySpeakersMutePending = 1;
+        SendCommand("get mute");
+        Print("QuerySpeakersMuteStatus: Sent get mute, Pending=1. Time: %s\n", TIME());
+        WAIT(RESPONSE_TIMEOUT, SpeakersMuteQueryTimeout)
+        {
+            IF (g_bQuerySpeakersMutePending = 1)
+            {
+                Debug_fb$ = "Timeout: get mute";
+                g_bQuerySpeakersMutePending = 0;
+                Print("SpeakersMuteQueryTimeout: Timed out. Pending=0. Time: %s\n", TIME());
+            }
+        }
+    }
+}
+
+FUNCTION QueryMicMuteStatus()
+{
+    IF (g_bQueryMicMutePending = 0)
+    {
+        g_bQueryMicMutePending = 1;
+        SendCommand("get micmute");
+        Print("QueryMicMuteStatus: Sent get micmute, Pending=1. Time: %s\n", TIME());
+        WAIT(RESPONSE_TIMEOUT, MicMuteQueryTimeout)
+        {
+            Print("MicMuteQueryTimeout: WAIT block entered. g_bQueryMicMutePending=%d. Time: %s\n", g_bQueryMicMutePending, TIME());
+            IF (g_bQueryMicMutePending = 1)
+            {
+                Debug_fb$ = "Timeout: MicMute";
+                g_bQueryMicMutePending = 0;
+                Print("MicMuteQueryTimeout: Processed timeout. Pending=0. Time: %s\n", TIME());
+            }
+            ELSE
+            {
+                Print("MicMuteQueryTimeout: Pending was already 0. Time: %s\n", TIME());
+            }
+            Print("MicMuteQueryTimeout: Exiting WAIT block. Time: %s\n", TIME());
+        }
+    }
+}
+
+FUNCTION QueryFreezeStatus()
+{
+    IF (g_bQueryFreezePending = 0)
+    {
+        g_bQueryFreezePending = 1;
+        SendCommand("get videofreeze");
+        Print("QueryFreezeStatus: Sent get videofreeze, Pending=1. Time: %s\n", TIME());
+        WAIT(RESPONSE_TIMEOUT, FreezeQueryTimeout)
+        {
+            IF (g_bQueryFreezePending = 1)
+            {
+                Debug_fb$ = "Timeout: get videofreeze";
+                g_bQueryFreezePending = 0;
+                Print("FreezeQueryTimeout: Timed out. Pending=0. Time: %s\n", TIME());
+            }
+        }
+    }
+}
+
+FUNCTION QueryScreenShadeStatus()
+{
+    IF (g_bQueryScreenShadePending = 0)
+    {
+        g_bQueryScreenShadePending = 1;
+        SendCommand("get screenshade");
+        Print("QueryScreenShadeStatus: Sent get screenshade, Pending=1. Time: %s\n", TIME());
+        WAIT(RESPONSE_TIMEOUT, ScreenShadeQueryTimeout)
+        {
+            IF (g_bQueryScreenShadePending = 1)
+            {
+                Debug_fb$ = "Timeout: get screenshade";
+                g_bQueryScreenShadePending = 0;
+                Print("ScreenShadeQueryTimeout: Timed out. Pending=0. Time: %s\n", TIME());
+            }
+        }
+    }
+}
+
+FUNCTION QueryFirmwareVersion()
+{
+    IF (g_bQueryFirmwareVersionPending = 0)
+    {
+        g_bQueryFirmwareVersionPending = 1;
+        SendCommand("get fwversion");
+        WAIT(RESPONSE_TIMEOUT, FirmwareQueryTimeout)
+        {
+            IF (g_bQueryFirmwareVersionPending = 1)
+            {
+                Debug_fb$ = "Timeout: get fwversion";
+                g_bQueryFirmwareVersionPending = 0;
+            }
+        }
+    }
+}
+
+FUNCTION QueryModelNumber()
+{
+    IF (g_bQueryModelNumberPending = 0)
+    {
+        g_bQueryModelNumberPending = 1;
+        SendCommand("get modelnum");
+        WAIT(RESPONSE_TIMEOUT, ModelQueryTimeout)
+        {
+            IF (g_bQueryModelNumberPending = 1)
+            {
+                Debug_fb$ = "Timeout: get modelnum";
+                g_bQueryModelNumberPending = 0;
+            }
+        }
+    }
+}
+
+FUNCTION QuerySerialNumber()
+{
+    IF (g_bQuerySerialNumberPending = 0)
+    {
+        g_bQuerySerialNumberPending = 1;
+        SendCommand("get serialnum");
+        WAIT(RESPONSE_TIMEOUT, SerialQueryTimeout)
+        {
+            IF (g_bQuerySerialNumberPending = 1)
+            {
+                Debug_fb$ = "Timeout: get serialnum";
+                g_bQuerySerialNumberPending = 0;
+            }
+        }
+    }
+}
+
+FUNCTION QueryPartNumber()
+{
+    IF (g_bQueryPartNumberPending = 0)
+    {
+        g_bQueryPartNumberPending = 1;
+        SendCommand("get partnum");
+        WAIT(RESPONSE_TIMEOUT, PartQueryTimeout)
+        {
+            IF (g_bQueryPartNumberPending = 1)
+            {
+                Debug_fb$ = "Timeout: get partnum";
+                g_bQueryPartNumberPending = 0;
+            }
+        }
+    }
+}
+
+FUNCTION SetPollInterval()
+{
+    INTEGER nInputPollRate_s;
+
+    nInputPollRate_s = Poll_Rate_seconds;
+
+    IF (nInputPollRate_s = 0) { g_nCurrentPollInterval_hs = DEFAULT_POLL_RATE_S * 100; }
+    ELSE IF (nInputPollRate_s < MIN_POLL_RATE_S) { g_nCurrentPollInterval_hs = MIN_POLL_RATE_S * 100; }
+    ELSE IF (nInputPollRate_s > MAX_POLL_RATE_S) { g_nCurrentPollInterval_hs = MAX_POLL_RATE_S * 100; }
+    ELSE { g_nCurrentPollInterval_hs = nInputPollRate_s * 100; }
+}
+
+FUNCTION StartActivePolling()
+{
+    Print("StartActivePolling: Entered. Time: %s\n", TIME());
+    IF (g_bPollingEnabled = 1)
+    {
+        IF (g_bInPowerTransition = 1)
+        {
+            Print("StartActivePolling: Deferring poll due to power transition.\n");
+        }
+        ELSE IF (g_bInitialized = 1)
+        {
+            Debug_fb$ = "Poll Cycle Start";
+            QueryPowerState();
+            DELAY(RESPONSE_TIMEOUT + 20); // Wait for power state response
+            
+            IF(Power_Is_On_fb = 1)
+            {
+                Print("StartActivePolling: Power is ON, proceeding with full poll.\n");
+                IF (Poll_Input_Source = 1) { QueryInputSource(); DELAY(SHORT_DELAY); }
+                IF (Poll_Brightness = 1) { QueryBrightness(); DELAY(SHORT_DELAY); }
+                IF (Poll_Volume = 1) { QueryVolume(); DELAY(SHORT_DELAY); }
+                IF (Poll_Speaker_Mute = 1) { QuerySpeakersMuteStatus(); DELAY(SHORT_DELAY); }
+                IF (Poll_Mic_Mute = 1) { QueryMicMuteStatus(); DELAY(SHORT_DELAY); }
+                IF (Poll_Video_Freeze = 1) { QueryFreezeStatus(); DELAY(SHORT_DELAY); }
+                IF (Poll_Screen_Shade = 1) { QueryScreenShadeStatus(); }
+            }
+            ELSE
+            {
+                Print("StartActivePolling: Power is OFF, skipping rest of poll cycle.\n");
+            }
+        }
+        
+        WAIT(g_nCurrentPollInterval_hs, Active_Poll_Loop)
+        {
+            CALL StartActivePolling(); 
+        }
+    }
+    Print("StartActivePolling: Exiting. Time: %s\n", TIME());
+} 
+
+
+FUNCTION MAIN()
+{
+    
+    g_bInitialized = 0;
+    g_nPowerStateKnown = 0;
+    g_sCurrentInputKnown = 0;
+    gsCurrentPowerState = "Unknown";
+    gsCurrentInputSource = "Unknown";
+    gsCurrentBrightness = "0";
+    gsCurrentVolume = "0";
+    gsCurrentSpeakersMuteState = "off";
+    gsCurrentMicMuteState = "off";
+    gsCurrentFreezeState = "off";
+    gsCurrentScreenShadeState = "off";
+    Firmware_Version_fb$ = "";
+    Model_Number_fb$ = "";
+    Serial_Number_fb$ = "";
+    Part_Number_fb$ = "";
+
+    g_bQueryPowerPending = 0;
+    g_bQueryInputPending = 0;
+    g_bQueryBrightnessPending = 0;
+    g_bQueryVolumePending = 0;
+    g_bQuerySpeakersMutePending = 0;
+    g_bQueryMicMutePending = 0;
+    g_bQueryFreezePending = 0;
+    g_bQueryScreenShadePending = 0;
+    g_bQueryFirmwareVersionPending = 0;
+    g_bQueryModelNumberPending = 0;
+    g_bQuerySerialNumberPending = 0;
+    g_bQueryPartNumberPending = 0;
+
+    g_bPollingEnabled = 0;
+    Polling_Active_fb = 0;
+
+    // Initialize new power transition variables
+    g_bInPowerTransition = 0;
+    gsRequestedPowerState = "";
+    g_bEmulationActive = 0;
+
+    Debug_fb$ = "Module Starting...";
+    SetPollInterval();
+
+    Print("MAIN: Initializing module...\n");
+    Debug_fb$ = "Module Initializing...";
+    DELAY(1000);
+    SendCommand(CR);
+    DELAY(SHORT_DELAY);
+
+    QueryPowerState();
+    WAIT(SHORT_DELAY, Initial_Query_Delay1) {
+        QueryInputSource();
+        WAIT(SHORT_DELAY, Initial_Query_Delay2) {
+            QueryBrightness();
+            WAIT(SHORT_DELAY, Initial_Query_Delay3) {
+                QueryVolume();
+                WAIT(SHORT_DELAY, Initial_Query_Delay4) {
+                    QuerySpeakersMuteStatus();
+                    WAIT(SHORT_DELAY, Initial_Query_Delay5) {
+                        QueryMicMuteStatus();
+                        WAIT(SHORT_DELAY, Initial_Query_Delay6) {
+                            QueryFreezeStatus();
+                            WAIT(SHORT_DELAY, Initial_Query_Delay7) {
+                                QueryScreenShadeStatus();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    g_bInitialized = 1;
+    Print("MAIN: Initialization complete. g_bInitialized=1. Current Time: %s\n", TIME());
+    Debug_fb$ = "Init Complete.";
+}
+
+//================================================================================
+// EVENT HANDLERS
+//================================================================================
+
+PUSH Power_On_trig
+{
+    IF (g_bInPowerTransition = 1)
+    {
+        Print("Power_On_trig IGNORED: Another power transition is active.\n");
+        RETURN;
+    }
+
+    IF (Enable_Emulation = 1)
+    {
+        g_bEmulationActive = 1;
+        Power_Is_On_fb = 1;
+        Power_Is_Off_fb = 0;
+        Power_Is_Standby_fb = 0;
+    }
+    
+    g_bInPowerTransition = 1;
+    gsRequestedPowerState = "on";
+    Debug_fb$ = "PwrOn: Starting...";
+    Print("PUSH Power_On_trig: Initiating power on sequence.\n");
+    SendCommand("set powerstate=on");
+
+    WAIT(POWER_TRANSITION_TIMEOUT, PowerOnTimeout)
+    {
+        IF (g_bEmulationActive = 1)
+        {
+            g_bEmulationActive = 0;
+            UpdatePowerFeedback(); // Revert to last known live state
+        }
+        IF (g_bInPowerTransition = 1)
+        {
+            g_bInPowerTransition = 0;
+            gsRequestedPowerState = "";
+            Debug_fb$ = "Pwr: On Timeout";
+            Print("PowerOnTimeout: Timed out waiting for 'on' confirmation.\n");
+        }
+    }
+}
+
+PUSH Power_Off_trig
+{
+    IF (g_bInPowerTransition = 1)
+    {
+        Print("Power_Off_trig IGNORED: Another power transition is active.\n");
+        RETURN;
+    }
+
+    IF (Enable_Emulation = 1)
+    {
+        g_bEmulationActive = 1;
+        Power_Is_On_fb = 0;
+        Power_Is_Off_fb = 1;
+        Power_Is_Standby_fb = 0;
+    }
+    
+    g_bInPowerTransition = 1;
+    gsRequestedPowerState = "off";
+    Debug_fb$ = "PwrOff: Starting...";
+    Print("PUSH Power_Off_trig: Initiating power off sequence.\n");
+    SendCommand("set powerstate=off");
+
+    WAIT(POWER_TRANSITION_TIMEOUT, PowerOffTimeout)
+    {
+        IF (g_bEmulationActive = 1)
+        {
+            g_bEmulationActive = 0;
+            UpdatePowerFeedback();
+        }
+        IF (g_bInPowerTransition = 1)
+        {
+            g_bInPowerTransition = 0;
+            gsRequestedPowerState = "";
+            Debug_fb$ = "Pwr: Off Timeout";
+            Print("PowerOffTimeout: Timed out waiting for 'off' confirmation.\n");
+        }
+    }
+}
+
+PUSH Power_Standby_trig
+{
+    IF (g_bInPowerTransition = 1)
+    {
+        Print("Power_Standby_trig IGNORED: Another power transition is active.\n");
+        RETURN;
+    }
+
+    IF (Enable_Emulation = 1)
+    {
+        g_bEmulationActive = 1;
+        Power_Is_On_fb = 0;
+        Power_Is_Off_fb = 0;
+        Power_Is_Standby_fb = 1;
+    }
+
+    g_bInPowerTransition = 1;
+    gsRequestedPowerState = "standby";
+    Debug_fb$ = "PwrStby: Starting...";
+    Print("PUSH Power_Standby_trig: Initiating power standby sequence.\n");
+    SendCommand("set powerstate=standby");
+
+    WAIT(POWER_TRANSITION_TIMEOUT, PowerStandbyTimeout)
+    {
+        IF (g_bEmulationActive = 1)
+        {
+            g_bEmulationActive = 0;
+            UpdatePowerFeedback();
+        }
+        IF (g_bInPowerTransition = 1)
+        {
+            g_bInPowerTransition = 0;
+            gsRequestedPowerState = "";
+            Debug_fb$ = "Pwr: Standby Timeout";
+            Print("PowerStandbyTimeout: Timed out waiting for 'standby' confirmation.\n");
+        }
+    }
+}
+
+PUSH Power_Toggle_trig
+{
+    IF (g_bInPowerTransition = 1)
+    {
+        Print("Power_Toggle_trig IGNORED: Power transition active.\n");
+        RETURN;
+    }
+
+    IF (Power_Is_On_fb = 1)
+    {
+        IF (Enable_Emulation = 1)
+        {
+            g_bEmulationActive = 1;
+            Power_Is_On_fb = 0;
+            Power_Is_Off_fb = 0;
+            Power_Is_Standby_fb = 1;
+        }
+        g_bInPowerTransition = 1;
+        gsRequestedPowerState = "standby";
+        Debug_fb$ = "PwrToggle: To Standby";
+        Print("PUSH Power_Toggle_trig: Display is ON, sending STANDBY.\n");
+        SendCommand("set powerstate=standby");
+        
+        WAIT(POWER_TRANSITION_TIMEOUT, PowerToggleStandbyTimeout)
+        {
+            IF (g_bEmulationActive = 1)
+            {
+                g_bEmulationActive = 0;
+                UpdatePowerFeedback();
+            }
+            IF (g_bInPowerTransition = 1)
+            {
+                g_bInPowerTransition = 0;
+                gsRequestedPowerState = "";
+                Debug_fb$ = "Pwr: Standby Timeout";
+                Print("PowerToggleStandbyTimeout: Timed out waiting for 'standby' confirmation.\n");
+            }
+        }
+    }
+    ELSE
+    {
+        IF (Enable_Emulation = 1)
+        {
+            g_bEmulationActive = 1;
+            Power_Is_On_fb = 1;
+            Power_Is_Off_fb = 0;
+            Power_Is_Standby_fb = 0;
+        }
+        g_bInPowerTransition = 1;
+        gsRequestedPowerState = "on";
+        Debug_fb$ = "PwrToggle: To On";
+        Print("PUSH Power_Toggle_trig: Display is OFF/STANDBY, sending ON.\n");
+        SendCommand("set powerstate=on");
+
+        WAIT(POWER_TRANSITION_TIMEOUT, PowerToggleOnTimeout)
+        {
+            IF (g_bEmulationActive = 1)
+            {
+                g_bEmulationActive = 0;
+                UpdatePowerFeedback();
+            }
+            IF (g_bInPowerTransition = 1)
+            {
+                g_bInPowerTransition = 0;
+                gsRequestedPowerState = "";
+                Debug_fb$ = "Pwr: On Timeout";
+                Print("PowerToggleOnTimeout: Timed out waiting for 'on' confirmation.\n");
+            }
+        }
+    }
+}
+
+PUSH Input_Select_HDMI1_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentInputSource = "hdmi1"; UpdateInputFeedback(); } SendCommand("set input=hdmi1");}
+PUSH Input_Select_HDMI2_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentInputSource = "hdmi2"; UpdateInputFeedback(); } SendCommand("set input=hdmi2");}
+PUSH Input_Select_HDMI3_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentInputSource = "hdmi3"; UpdateInputFeedback(); } SendCommand("set input=hdmi3");}
+PUSH Input_Select_HDMI4_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentInputSource = "hdmi4"; UpdateInputFeedback(); } SendCommand("set input=hdmi4");}
+PUSH Input_Select_VGA1_trig  { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentInputSource = "vga1"; UpdateInputFeedback(); } SendCommand("set input=vga1"); }
+PUSH Input_Select_OPS1_trig  { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentInputSource = "ops1"; UpdateInputFeedback(); } SendCommand("set input=ops1"); }
+PUSH Input_Select_USBC1_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentInputSource = "usbc1"; UpdateInputFeedback(); } SendCommand("set input=usbc1");}
+PUSH Input_Select_USBC2_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentInputSource = "usbc2"; UpdateInputFeedback(); } SendCommand("set input=usbc2");}
+PUSH Input_Select_Android_trig{ IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentInputSource = "android"; UpdateInputFeedback(); } SendCommand("set input=android");}
+
+PUSH Set_Brightness_Level_trig
+{
+    STRING sCmd[MAX_COMMAND_SIZE];
+    IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; }
+    IF (Enable_Emulation = 1) { g_bEmulationActive = 1; Brightness_Level_fb = Brightness_Level_ain; }
+    sCmd = "set brightness=" + ITOA(Brightness_Level_ain); SendCommand(sCmd);
+    DELAY(SHORT_DELAY); QueryBrightness();
+}
+PUSH Brightness_Up_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } SendCommand("set brightness +5");}
+PUSH Brightness_Down_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } SendCommand("set brightness -5");}
+
+PUSH Set_Volume_Level_trig
+{
+    STRING sCmd[MAX_COMMAND_SIZE];
+    IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; }
+    IF (Enable_Emulation = 1) { g_bEmulationActive = 1; Volume_Level_fb = Volume_Level_ain; }
+    sCmd = "set volume=" + ITOA(Volume_Level_ain); SendCommand(sCmd);
+    DELAY(SHORT_DELAY); QueryVolume();
+}
+PUSH Volume_Up_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } SendCommand("set volume +5");}
+PUSH Volume_Down_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } SendCommand("set volume -5");}
+
+PUSH Mute_Speakers_On_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentSpeakersMuteState = "on"; UpdateSpeakersMuteFeedback(); } SendCommand("set mute=on"); DELAY(SHORT_DELAY); QuerySpeakersMuteStatus(); }
+PUSH Mute_Speakers_Off_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentSpeakersMuteState = "off"; UpdateSpeakersMuteFeedback(); } SendCommand("set mute=off"); DELAY(SHORT_DELAY); QuerySpeakersMuteStatus(); }
+
+PUSH Mute_Mic_On_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentMicMuteState = "on"; UpdateMicMuteFeedback(); } SendCommand("set micmute=on"); DELAY(SHORT_DELAY); QueryMicMuteStatus(); }
+PUSH Mute_Mic_Off_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentMicMuteState = "off"; UpdateMicMuteFeedback(); } SendCommand("set micmute=off"); DELAY(SHORT_DELAY); QueryMicMuteStatus(); }
+
+PUSH Video_Freeze_On_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentFreezeState = "on"; UpdateFreezeFeedback(); } SendCommand("set videofreeze=on"); DELAY(SHORT_DELAY); QueryFreezeStatus(); }
+PUSH Video_Freeze_Off_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentFreezeState = "off"; UpdateFreezeFeedback(); } SendCommand("set videofreeze=off"); DELAY(SHORT_DELAY); QueryFreezeStatus(); }
+
+PUSH Screen_Shade_On_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentScreenShadeState = "on"; UpdateScreenShadeFeedback(); } SendCommand("set screenshade=on"); DELAY(SHORT_DELAY); QueryScreenShadeStatus(); }
+PUSH Screen_Shade_Off_trig { IF (g_bInPowerTransition = 1) { Debug_fb$ = "Cmd Ignored: Pwr Busy"; RETURN; } IF (Enable_Emulation = 1) { g_bEmulationActive = 1; gsCurrentScreenShadeState = "off"; UpdateScreenShadeFeedback(); } SendCommand("set screenshade=off"); DELAY(SHORT_DELAY); QueryScreenShadeStatus(); }
+
+PUSH Query_Firmware_Version_trig { QueryFirmwareVersion(); }
+PUSH Query_Model_Number_trig { QueryModelNumber(); }
+PUSH Query_Serial_Number_trig { QuerySerialNumber(); }
+PUSH Query_Part_Number_trig { QueryPartNumber(); }
+
+PUSH Query_All_Status_trig
+{
+    QueryPowerState();         DELAY(SHORT_DELAY);
+    QueryInputSource();        DELAY(SHORT_DELAY);
+    QueryBrightness();         DELAY(SHORT_DELAY);
+    QueryVolume();             DELAY(SHORT_DELAY);
+    QuerySpeakersMuteStatus(); DELAY(SHORT_DELAY);
+    QueryMicMuteStatus();      DELAY(SHORT_DELAY);
+    QueryFreezeStatus();       DELAY(SHORT_DELAY);
+    QueryScreenShadeStatus();
+}
+
+CHANGE Enable_Polling
+{
+    STRING sTempDebugMsg[MAX_VALUE_SIZE];
+
+    Print("Polling: CHG Enable_Polling - Handler Entered. Enable_Polling Val: %d. Time: %s\n", Enable_Polling, TIME());
+    g_bPollingEnabled = Enable_Polling;
+    Polling_Active_fb = g_bPollingEnabled;
+    sTempDebugMsg = "EnablePoll:" + ITOA(g_bPollingEnabled);
+    Print("Polling: CHG Enable_Polling - Before Debug_fb$. sTempDebugMsg: '%s'. Time: %s\n", sTempDebugMsg, TIME());
+    Debug_fb$ = sTempDebugMsg;
+    Print("Polling: CHG Enable_Polling - After Debug_fb$ set. Time: %s\n", TIME());
+
+    IF (g_bPollingEnabled = 1)
+    {
+        Print("Polling: CHG Enable_Polling - Polling ON. Time: %s\n", TIME());
+        CALL StartActivePolling(); 
+    }
+    ELSE 
+    {
+        Print("Polling: CHG Enable_Polling - Polling OFF. Time: %s\n", TIME());
+        CANCELWAIT(Active_Poll_Loop); 
+        
+    }
+    Print("Polling: CHG Enable_Polling - End. Time: %s\n", TIME());
+}
+
+CHANGE Poll_Rate_seconds
+{
+    STRING sTempDebugMsg[MAX_VALUE_SIZE];
+    sTempDebugMsg = "PollRate Set:" + ITOA(Poll_Rate_seconds);
+    Debug_fb$ = sTempDebugMsg;
+    Print("Polling: %s (tenths)\n", sTempDebugMsg);
+
+    SetPollInterval();
+
+    sTempDebugMsg = "New Rate(hs):" + ITOA(g_nCurrentPollInterval_hs);
+    Debug_fb$ = sTempDebugMsg;
+    Print("Polling: %s\n", sTempDebugMsg);
+}
+
+CHANGE RS232_rx$
+{
+    STRING sLine[MAX_SERIAL_BUFFER_SIZE]; INTEGER nLineLen; STRING sFirstChar[2]; INTEGER bIsValidLine;
+    STRING sProcessedLine[MAX_SERIAL_BUFFER_SIZE]; INTEGER nIsPromptResult; INTEGER nIsAsyncResult;
+    STRING sPromptLiteral[2]; STRING sAsyncLiteral[2]; INTEGER nTempComparisonResult; INTEGER nCurrentByteValue;
+    INTEGER bAnomalyFound;
+
+    sPromptLiteral = ">"; sAsyncLiteral = "#";
+    bAnomalyFound = 0;
+
+    // *** New: Exception handling for standby command anomaly ***
+    IF (g_bInPowerTransition = 1)
+    {
+        IF(gsRequestedPowerState = "standby")
+        {
+            IF (FIND("powerstate=standby", RS232_rx$) > 0)
+            {
+                IF (FIND("powerstate=on", RS232_rx$) > 0)
+                {
+                    bAnomalyFound = 1;
+                }
+            }
+        }
+    }
+
+    IF (bAnomalyFound = 1)
+    {
+        Print("Standby Anomaly Detected. Retrying command in 2 seconds.\n");
+        Debug_fb$ = "Pwr: Standby Anomaly";
+        ClearBuffer(RS232_rx$); 
+        DELAY(200); 
+        SendCommand("set powerstate=standby");
+        RETURN;
+    }
+
+    WHILE (FIND(CR, RS232_rx$, 1) > 0) {
+        sLine = REMOVE(CR, RS232_rx$); sLine = LEFT(sLine, LEN(sLine) - 1); 
+        IF (LEN(sLine) > 0) { 
+            nCurrentByteValue = BYTE(sLine, 1);
+            IF (nCurrentByteValue = 0x0A) { nTempComparisonResult = 1; } ELSE { nTempComparisonResult = 0; } 
+            IF (nTempComparisonResult = 1) { sLine = RIGHT(sLine, LEN(sLine) - 1); }
+        }
+        sProcessedLine = TRIM_RESPONSE(sLine); nLineLen = LEN(sProcessedLine);
+        IF (nLineLen > 0) { bIsValidLine = 1; } ELSE { bIsValidLine = 0; }
+        IF (bIsValidLine = 1) {
+            sFirstChar = ""; sFirstChar = MID(sProcessedLine, 1, 1); 
+            IF (sFirstChar = sPromptLiteral) { nIsPromptResult = 1; } ELSE { nIsPromptResult = 0; }
+            IF (sFirstChar = sAsyncLiteral) { nIsAsyncResult = 1; } ELSE { nIsAsyncResult = 0; }
+
+            IF (nIsPromptResult = 1) { Debug_fb$ = "RX: Prompt"; }
+            ELSE IF (nIsAsyncResult = 1) {
+                Debug_fb$ = "RX: Async: " + LEFT(sProcessedLine, MAX_VALUE_SIZE - 12);
+                CancelWait(PowerQueryTimeout); CancelWait(InputQueryTimeout); CancelWait(BrightnessQueryTimeout);
+                CancelWait(VolumeQueryTimeout); CancelWait(SpeakersMuteQueryTimeout); CancelWait(MicMuteQueryTimeout);
+                CancelWait(FreezeQueryTimeout); CancelWait(ScreenShadeQueryTimeout);
+                Print("RX Async: %s\n", sProcessedLine);
+
+                IF (FIND("powerstate=", sProcessedLine) > 0) { ProcessPowerResponse(sProcessedLine, 1); }
+                ELSE IF (FIND("input=", sProcessedLine) > 0) { ProcessInputResponse(sProcessedLine); }
+                ELSE IF (FIND("brightness=", sProcessedLine) > 0) { ProcessBrightnessResponse(sProcessedLine); }
+                ELSE IF (FIND("volume=", sProcessedLine) > 0) { ProcessVolumeResponse(sProcessedLine); }
+                ELSE IF (FIND("mute=", sProcessedLine) > 0) { ProcessSpeakersMuteResponse(sProcessedLine); }
+                ELSE IF (FIND("micmute=", sProcessedLine) > 0) { ProcessMicMuteResponse(sProcessedLine); }
+                ELSE IF (FIND("videofreeze=", sProcessedLine) > 0) { ProcessFreezeResponse(sProcessedLine); }
+                ELSE IF (FIND("screenshade=", sProcessedLine) > 0) { ProcessScreenShadeResponse(sProcessedLine); }
+            }
+            ELSE { 
+                Print("RS232_rx$: Processing solicited response or error: %s\n", sProcessedLine);
+                IF (FIND("invalid cmd:", sProcessedLine) > 0)
+                { Debug_fb$ = "RX: Invalid Cmd"; Print("RS232_rx$: Invalid command received.\n"); }
+                ELSE IF (FIND("unknown command:", sProcessedLine) > 0)
+                { Debug_fb$ = "RX: Unknown Cmd"; Print("RS232_rx$: Unknown command received.\n"); }
+
+                IF (FIND("powerstate=", sProcessedLine) > 0) { IF (g_bQueryPowerPending = 1) { Print("RS232_rx$: Power response, pending=1. Cancelling & Processing.\n"); CancelWait(PowerQueryTimeout); ProcessPowerResponse(sProcessedLine, 0); } ELSE {Print("RS232_rx$: Power response, pending=0. Ignoring.\n");} }
+                ELSE IF (FIND("input=", sProcessedLine) > 0) { ProcessInputResponse(sProcessedLine); }
+                ELSE IF (FIND("brightness=", sProcessedLine) > 0) { ProcessBrightnessResponse(sProcessedLine); }
+                ELSE IF (FIND("volume=", sProcessedLine) > 0) { ProcessVolumeResponse(sProcessedLine); }
+                ELSE IF (FIND("mute=", sProcessedLine) > 0) { IF (g_bQuerySpeakersMutePending = 1) { Print("RS232_rx$: SpkMute response, pending=1. Cancelling & Processing.\n"); CancelWait(SpeakersMuteQueryTimeout); ProcessSpeakersMuteResponse(sProcessedLine); } ELSE {Print("RS232_rx$: SpkMute response, pending=0. Ignoring.\n");} }
+                ELSE IF (FIND("micmute=", sProcessedLine) > 0) { Print("RS232_rx$: Found 'micmute=' response. Current g_bQueryMicMutePending=%d\n", g_bQueryMicMutePending); IF (g_bQueryMicMutePending = 1) { Print("RS232_rx$: MicMute pending=1. Cancelling & Processing.\n"); CancelWait(MicMuteQueryTimeout); ProcessMicMuteResponse(sProcessedLine); } ELSE {Print("RS232_rx$: MicMute response, pending=0. Ignoring.\n");} }
+                ELSE IF (FIND("videofreeze=", sProcessedLine) > 0) { IF (g_bQueryFreezePending = 1) { Print("RS232_rx$: Freeze response, pending=1. Cancelling & Processing.\n"); CancelWait(FreezeQueryTimeout); ProcessFreezeResponse(sProcessedLine); } ELSE {Print("RS232_rx$: Freeze response, pending=0. Ignoring.\n");} }
+                ELSE IF (FIND("screenshade=", sProcessedLine) > 0) { IF (g_bQueryScreenShadePending = 1) { Print("RS232_rx$: Shade response, pending=1. Cancelling & Processing.\n"); CancelWait(ScreenShadeQueryTimeout); ProcessScreenShadeResponse(sProcessedLine); } ELSE {Print("RS232_rx$: Shade response, pending=0. Ignoring.\n");} }
+                ELSE IF (FIND("fwversion=", sProcessedLine) > 0) { IF (g_bQueryFirmwareVersionPending = 1) { CancelWait(FirmwareQueryTimeout); ProcessFirmwareVersionResponse(sProcessedLine); } }
+                ELSE IF (FIND("modelnum=", sProcessedLine) > 0) { IF (g_bQueryModelNumberPending = 1) { CancelWait(ModelQueryTimeout); ProcessModelNumberResponse(sProcessedLine); } }
+                ELSE IF (FIND("serialnum=", sProcessedLine) > 0) { IF (g_bQuerySerialNumberPending = 1) { CancelWait(SerialQueryTimeout); ProcessSerialNumberResponse(sProcessedLine); } }
+                ELSE IF (FIND("partnum=", sProcessedLine) > 0) { IF (g_bQueryPartNumberPending = 1) { CancelWait(PartQueryTimeout); ProcessPartNumberResponse(sProcessedLine); } }
+            }
+        }
+    }
+}
