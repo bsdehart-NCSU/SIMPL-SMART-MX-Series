@@ -1,204 +1,1916 @@
-# Sony SRG-A40 / SRG-A12 VISCA IP Control SIMPL+ Module
+# Crestron SIMPL+ Module: SMART Display MX (V5) RS-232 Control
 
 # 
 
-# Version: 1.1
+# VERSION: 3.1
 
-# Overview
-
-# 
-
-# This Crestron SIMPL+ module provides comprehensive and robust control for Sony SRG-A40 and SRG-A12 PTZ cameras over a standard TCP/IP network using the VISCA protocol.
+# GENERAL DESCRIPTION
 
 # 
 
-# The module is designed for professional AV integration, offering discrete commands for nearly all camera functions and providing real-time feedback. A core feature is its seamless integration with the Crestron C2N-CAMIDJ joystick, enabling an intuitive and tactile control experience for camera operators.
-
-# Key Features
+# This module provides comprehensive RS-232 control for specific SMART Technologies interactive flat panel displays. It allows for management of various display functions including:
 
 # 
 
-# &nbsp;   Full PTZF Control: Smooth, variable-speed pan, tilt, zoom, and focus control.
+# &nbsp;   Power (On, Off, Standby, Toggle)
 
 # 
 
-# &nbsp;   Extensive CCU Settings: Access and adjust a wide range of image parameters, including:
+# &nbsp;   Input Source Selection (HDMI, VGA, OPS, USB-C, Android)
 
 # 
 
-# &nbsp;       Exposure (Auto, Manual, Shutter/Iris Priority)
+# &nbsp;   Brightness Level Control (Set, Up, Down)
 
 # 
 
-# &nbsp;       White Balance (Auto, Presets, One-Push, Manual)
+# &nbsp;   Volume Level Control (Set, Up, Down)
 
 # 
 
-# &nbsp;       Gain, Iris, Shutter, and Aperture
+# &nbsp;   Speaker Mute Control (On, Off)
 
 # 
 
-# &nbsp;       Image enhancements like WDR, Backlight Compensation, and High Sensitivity.
+# &nbsp;   Microphone Mute Control (On, Off)
 
 # 
 
-# &nbsp;   Advanced Preset Management: Store, recall, and clear up to 256 presets.
+# &nbsp;   Video Freeze (On, Off)
 
 # 
 
-# &nbsp;   C2N-CAMIDJ Joystick Integration:
+# &nbsp;   Screen Shade (On, Off)
 
 # 
 
-# &nbsp;       Mode-based control for PTZ speed, focus, and iris.
+# &nbsp;   Information Queries (Firmware Version, Model Number, Serial Number, Part Number)
 
 # 
 
-# &nbsp;       Automatic feedback to the joystick's LEDs and digital display.
+# &nbsp;   Status Polling for continuous feedback updates.
 
 # 
 
-# &nbsp;       On-the-fly speed adjustments using the joystick wheel.
+# The module handles sending commands to the display and parsing responses to provide feedback on its current state. It features a robust power transition lock, configurable and granular polling, an optional emulation mode for instant feedback, and debug information.
+
+# COMPATIBILITY
 
 # 
 
-# &nbsp;   Robust Communication:
+# This module is specifically designed and tested for the following SMART display series:
 
 # 
 
-# &nbsp;       Manages VISCA over IP sequence numbering and packet formatting.
+# &nbsp;   SMART Board MX (V5) series (including MX (V5) Pro models)
 
 # 
 
-# &nbsp;       Automatic keep-alive polling to monitor the camera's connection status.
+# &nbsp;   SMART Board MX (V5) Plus series
 
 # 
 
-# &nbsp;       Re-initializes the connection if communication is lost.
+# Potential Partial Compatibility:
 
 # 
 
-# &nbsp;   Additional Controls:
+# &nbsp;   SMART Board QX Pro series: This series utilizes a similar RS-232 command structure for many common functions (power, input, volume, etc.). While basic operations are likely to be compatible, full functionality across all module features is not guaranteed and should be verified through testing. There may be differences in specific parameter values or advanced commands.
 
 # 
 
-# &nbsp;       Auto Framing activation and deactivation.
+# Not Compatible:
 
 # 
 
-# &nbsp;       Tally light control with a keep-alive mechanism.
+# &nbsp;   Other SMART Board series, such as the GX series, use different RS-232 command protocols and are not compatible with this module.
 
 # 
 
-# &nbsp;       Video Mute, Image Flip, and more.
+# &nbsp;   Always verify functionality with the specific display model in use if it is not listed as a primary compatible model.
 
 # 
 
-# Compatibility
+# FEATURES
 
 # 
 
-# &nbsp;   Primary: Sony SRG-A40, Sony SRG-A12
+# &nbsp;   Direct RS-232 control of compatible SMART displays.
 
 # 
 
-# &nbsp;   Protocol: VISCA over IP
+# &nbsp;   Discrete and toggle power commands with feedback.
 
 # 
 
-# While other Sony VISCA over IP cameras may respond to basic commands, full functionality is only guaranteed for the primary models listed.
-
-# Getting Started
+# &nbsp;   Robust power transition lock with a 20-second timeout to prevent the module from getting stuck.
 
 # 
 
-# &nbsp;   Add to SIMPL Program: Add a TCP/IP Client device to your SIMPL program. Set its IP Address to the static IP of the Sony camera and the port to 52381.
+# &nbsp;   Emulation Mode: Optional feature provides instant feedback for a more responsive user experience, which is then verified by live feedback from the display.
 
 # 
 
-# &nbsp;   Insert Module: Drag the Sony SRG-A40 A12 VISCA IP C2N-CAMIDJ v1.1.usp module from your user modules into the Logic folder of your program.
+# &nbsp;   Multiple input source selection with feedback.
 
 # 
 
-# &nbsp;   Connect Communication:
+# &nbsp;   Analog and incremental control for brightness and volume with feedback.
 
 # 
 
-# &nbsp;       Connect the To\_Camera\_tx$ output of the module to the TX$ input of the TCP/IP Client.
+# &nbsp;   Discrete mute controls for speakers and microphone with feedback.
 
 # 
 
-# &nbsp;       Connect the RX$ output of the TCP/IP Client to the From\_Camera\_rx$ input of the module.
+# &nbsp;   Video freeze and screen shade controls with feedback.
 
 # 
 
-# &nbsp;   Control \& Feedback: Connect your control system logic (e.g., from a touch panel) to the various \_trig inputs on the module. Use the \_fb outputs to drive feedback on your user interface.
+# &nbsp;   Ability to query display information such as firmware version and serial number.
 
 # 
 
-# &nbsp;   C2N-CAMIDJ (Optional): If using a joystick, add a C2N-CAMIDJ symbol to your program and connect its analog and digital outputs to the corresponding C2N\_CAMIDJ\_ inputs on this module. Connect the module's C2N\_CAMIDJ\_ feedback outputs back to the joystick symbol.
+# &nbsp;   Intelligent Polling: Configurable status polling is automatically deferred during power transitions and only queries relevant commands when the display is confirmed to be on.
 
 # 
 
-# Operations
+# &nbsp;   Granular Polling Control: Individual digital inputs allow the programmer to enable or disable polling for specific functions (e.g., only poll for volume and input status).
+
+# 
+
+# &nbsp;   Initialization sequence to query current display status on startup.
+
+# 
+
+# &nbsp;   Debug output for troubleshooting.
+
+# 
+
+# &nbsp;   Exception handling for a known display anomaly where conflicting power states are reported.
+
+# 
+
+# INPUTS
+
+# Power Control
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Power\_On\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse sends the "Power On" command to the display.
+
+# 
+
+# Power\_Off\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse sends the "Power Off" command to the display.
+
+# 
+
+# Power\_Standby\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse sends the "Power Standby" command to the display.
+
+# 
+
+# Power\_Toggle\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse toggles the power state. If the display is on, it sends a "Standby" command. If it is off or in standby, it sends an "On" command.
+
+# Input Selection
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Input\_Select\_HDMI1\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse selects HDMI1 as the active input source.
+
+# 
+
+# Input\_Select\_HDMI2\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse selects HDMI2 as the active input source.
+
+# 
+
+# Input\_Select\_HDMI3\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse selects HDMI3 as the active input source.
+
+# 
+
+# Input\_Select\_HDMI4\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse selects HDMI4 as the active input source.
+
+# 
+
+# Input\_Select\_VGA1\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse selects VGA1 as the active input source.
+
+# 
+
+# Input\_Select\_OPS1\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse selects OPS1 as the active input source.
+
+# 
+
+# Input\_Select\_USBC1\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse selects USB-C 1 as the active input source.
+
+# 
+
+# Input\_Select\_USBC2\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse selects USB-C 2 as the active input source.
+
+# 
+
+# Input\_Select\_Android\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse selects the built-in Android system as the active source.
+
+# Brightness Control
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Brightness\_Level\_ain
+
+# &nbsp;	
+
+# 
+
+# ANALOG
+
+# &nbsp;	
+
+# 
+
+# Sets the desired brightness level (0-100). Use with Set\_Brightness\_Level\_trig.
+
+# 
+
+# Set\_Brightness\_Level\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse sends the brightness level from Brightness\_Level\_ain.
+
+# 
+
+# Brightness\_Up\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse increases the brightness level by a predefined step (e.g., 5%).
+
+# 
+
+# Brightness\_Down\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse decreases the brightness level by a predefined step (e.g., 5%).
+
+# Volume Control
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Volume\_Level\_ain
+
+# &nbsp;	
+
+# 
+
+# ANALOG
+
+# &nbsp;	
+
+# 
+
+# Sets the desired volume level (0-100). Use with Set\_Volume\_Level\_trig.
+
+# 
+
+# Set\_Volume\_Level\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse sends the volume level from Volume\_Level\_ain.
+
+# 
+
+# Volume\_Up\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse increases the volume level by a predefined step (e.g., 5%).
+
+# 
+
+# Volume\_Down\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse decreases the volume level by a predefined step (e.g., 5%).
+
+# Speaker Mute Control
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Mute\_Speakers\_On\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse mutes the display's speakers.
+
+# 
+
+# Mute\_Speakers\_Off\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse un-mutes the display's speakers.
+
+# Microphone Mute Control
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Mute\_Mic\_On\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse mutes the display's microphone array.
+
+# 
+
+# Mute\_Mic\_Off\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse un-mutes the display's microphone array.
+
+# Video Freeze Control
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Video\_Freeze\_On\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse freezes the current video image on the display.
+
+# 
+
+# Video\_Freeze\_Off\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse un-freezes the video image.
+
+# Screen Shade Control
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Screen\_Shade\_On\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse activates the screen shade (blanks the screen).
+
+# 
+
+# Screen\_Shade\_Off\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse deactivates the screen shade.
+
+# Information Queries
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Query\_Firmware\_Version\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse requests the display's firmware version.
+
+# 
+
+# Query\_Model\_Number\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse requests the display's model number.
+
+# 
+
+# Query\_Serial\_Number\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse requests the display's serial number.
+
+# 
+
+# Query\_Part\_Number\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse requests the display's part number.
+
+# Polling \& General Query
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Enable\_Polling
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# When HIGH, enables periodic polling of all display statuses. When LOW, disables polling.
+
+# 
+
+# Poll\_Rate\_seconds
+
+# &nbsp;	
+
+# 
+
+# ANALOG
+
+# &nbsp;	
+
+# 
+
+# Sets the interval for status polling in whole seconds. (e.g., 60 = 60 seconds). Default: 15s. Min: 5s. Max: 300s. If 0 is input, the default rate is used. Changes take effect on the next poll cycle.
+
+# 
+
+# Enable\_Emulation
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# When HIGH, feedback outputs will update instantly when a command is sent, providing a more responsive feel. This emulated state is superseded by any live feedback from the device. Default is LOW.
+
+# 
+
+# Query\_All\_Status\_trig
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# Momentary high pulse manually queries all supported display statuses once.
+
+# 
+
+# Poll\_Input\_Source
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# When HIGH, the active input source will be included in the polling cycle. Defaults to HIGH.
+
+# 
+
+# Poll\_Brightness
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# When HIGH, the brightness level will be included in the polling cycle. Defaults to HIGH.
+
+# 
+
+# Poll\_Volume
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# When HIGH, the volume level will be included in the polling cycle. Defaults to HIGH.
+
+# 
+
+# Poll\_Speaker\_Mute
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# When HIGH, the speaker mute status will be included in the polling cycle. Defaults to HIGH.
+
+# 
+
+# Poll\_Mic\_Mute
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# When HIGH, the microphone mute status will be included in the polling cycle. Defaults to HIGH.
+
+# 
+
+# Poll\_Video\_Freeze
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# When HIGH, the video freeze status will be included in the polling cycle. Defaults to HIGH.
+
+# 
+
+# Poll\_Screen\_Shade
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# When HIGH, the screen shade status will be included in the polling cycle. Defaults to HIGH.
+
+# Serial Communication
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# RS232\_rx$
+
+# &nbsp;	
+
+# 
+
+# BUFFER
+
+# &nbsp;	
+
+# 
+
+# Connect to the RX$ input of a serial communication symbol (e.g., COM Port, Cresnet COM, etc.). Receives data from the SMART display. Max buffer size: 255 characters.
+
+# OUTPUTS
+
+# Power Feedback
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Power\_Is\_On\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when the display is confirmed to be ON. LOW otherwise.
+
+# 
+
+# Power\_Is\_Off\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when the display is confirmed to be OFF. LOW otherwise.
+
+# 
+
+# Power\_Is\_Standby\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when the display is confirmed to be in STANDBY. LOW otherwise.
+
+# Input Selection Feedback
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Is\_HDMI1\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when HDMI1 is the confirmed active input source. LOW otherwise.
+
+# 
+
+# Is\_HDMI2\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when HDMI2 is the confirmed active input source. LOW otherwise.
+
+# 
+
+# Is\_HDMI3\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when HDMI3 is the confirmed active input source. LOW otherwise.
+
+# 
+
+# Is\_HDMI4\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when HDMI4 is the confirmed active input source. LOW otherwise.
+
+# 
+
+# Is\_VGA1\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when VGA1 is the confirmed active input source. LOW otherwise.
+
+# 
+
+# Is\_OPS1\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when OPS1 is the confirmed active input source. LOW otherwise.
+
+# 
+
+# Is\_USBC1\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when USB-C 1 is the confirmed active input source. LOW otherwise.
+
+# 
+
+# Is\_USBC2\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when USB-C 2 is the confirmed active input source. LOW otherwise.
+
+# 
+
+# Is\_Android\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when the built-in Android system is the confirmed active source. LOW otherwise.
+
+# Brightness Feedback
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Brightness\_Level\_fb
+
+# &nbsp;	
+
+# 
+
+# ANALOG
+
+# &nbsp;	
+
+# 
+
+# Reflects the current brightness level of the display (0-100).
+
+# Volume Feedback
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Volume\_Level\_fb
+
+# &nbsp;	
+
+# 
+
+# ANALOG
+
+# &nbsp;	
+
+# 
+
+# Reflects the current volume level of the display (0-100).
+
+# Speaker Mute Feedback
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Speakers\_Are\_Muted\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when the display's speakers are confirmed to be muted. LOW otherwise.
+
+# Microphone Mute Feedback
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Mic\_Is\_Muted\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when the display's microphone array is confirmed to be muted. LOW otherwise.
+
+# Video Freeze Feedback
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Video\_Is\_Frozen\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when the display's video image is confirmed to be frozen. LOW otherwise.
+
+# Screen Shade Feedback
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Screen\_Shade\_Is\_On\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when the display's screen shade is confirmed to be active. LOW otherwise.
+
+# Information Feedback
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Firmware\_Version\_fb$
+
+# &nbsp;	
+
+# 
+
+# STRING
+
+# &nbsp;	
+
+# 
+
+# Reports the firmware version of the display. Max length: 60 characters.
+
+# 
+
+# Model\_Number\_fb$
+
+# &nbsp;	
+
+# 
+
+# STRING
+
+# &nbsp;	
+
+# 
+
+# Reports the model number of the display. Max length: 60 characters.
+
+# 
+
+# Serial\_Number\_fb$
+
+# &nbsp;	
+
+# 
+
+# STRING
+
+# &nbsp;	
+
+# 
+
+# Reports the serial number of the display. Max length: 60 characters.
+
+# 
+
+# Part\_Number\_fb$
+
+# &nbsp;	
+
+# 
+
+# STRING
+
+# &nbsp;	
+
+# 
+
+# Reports the part number of the display. Max length: 60 characters.
+
+# Polling Feedback
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# Polling\_Active\_fb
+
+# &nbsp;	
+
+# 
+
+# DIGITAL
+
+# &nbsp;	
+
+# 
+
+# HIGH when status polling is currently active. LOW otherwise.
+
+# Serial Communication \& Debug
+
+# 
+
+# Signal Name
+
+# &nbsp;	
+
+# 
+
+# Type
+
+# &nbsp;	
+
+# 
+
+# Description
+
+# 
+
+# RS232\_tx$
+
+# &nbsp;	
+
+# 
+
+# STRING
+
+# &nbsp;	
+
+# 
+
+# Connect to the TX$ output of a serial communication symbol. Transmits commands to the SMART display. Commands are terminated with a Carriage Return (CR - \\x0D).
+
+# 
+
+# Debug\_fb$
+
+# &nbsp;	
+
+# 
+
+# STRING
+
+# &nbsp;	
+
+# 
+
+# Provides status messages, received responses, and error information from the module for troubleshooting purposes. Can be connected to a "Serial/ASCII Send" symbol.
+
+# PARAMETERS
+
+# 
+
+# &nbsp;   Enable\_Polling (Digital Input)
+
+# 
+
+# &nbsp;       Function: Controls the automatic status polling feature.
+
+# 
+
+# &nbsp;       HIGH: Polling is active. The module will periodically send query commands to the display to update all feedback signals.
+
+# 
+
+# &nbsp;       LOW: Polling is inactive. Feedback signals will only update when a command is sent, an explicit query is triggered, or an asynchronous message is received.
+
+# 
+
+# &nbsp;       Default State: Polling is disabled on module startup until Enable\_Polling is set high.
+
+# 
+
+# &nbsp;   Poll\_Rate\_seconds (Analog Input)
+
+# 
+
+# &nbsp;       Function: Sets the time interval between polling cycles when Enable\_Polling is high.
+
+# 
+
+# &nbsp;       Units: Value is in whole seconds.
+
+# 
+
+# &nbsp;       Example: An input value of 60 corresponds to a poll rate of 60 seconds.
+
+# 
+
+# &nbsp;       Default Value: 15 (15 seconds). This is used if Poll\_Rate\_seconds is 0 or not connected.
+
+# 
+
+# &nbsp;       Minimum Value: 5 (5 seconds). Values below this will be clamped to 5 seconds.
+
+# 
+
+# &nbsp;       Maximum Value: 300 (300 seconds / 5 minutes). Values above this will be clamped to 300 seconds.
+
+# 
+
+# &nbsp;       Behavior: Changes to this input are applied before the next scheduled poll. If polling is active and the rate is changed, the current poll cycle will complete, and the next poll will use the new interval.
+
+# 
+
+# &nbsp;   Enable\_Emulation (Digital Input)
+
+# 
+
+# &nbsp;       Function: Controls the instant feedback feature.
+
+# 
+
+# &nbsp;       HIGH: When a command is sent, the corresponding feedback output will update immediately to the intended state. This provides a more responsive user experience. This emulated state will be automatically corrected if/when a different live status is received from the display.
+
+# 
+
+# &nbsp;       LOW: Feedback outputs will only update when a response is received from the device.
+
+# 
+
+# &nbsp;       Default State: Emulation is disabled (LOW) by default.
+
+# 
+
+# OPERATIONS
 
 # Initialization
 
 # 
 
-# The module automatically handles the connection and initialization process. Upon a successful TCP/IP connection, it resets the VISCA sequence number and queries all camera states to synchronize feedback.
-
-# C2N-CAMIDJ Joystick
+# Upon program start or module reset, the module performs an initial sequence of queries to determine the current state of the display for:
 
 # 
 
-# The joystick provides an intuitive way to operate the camera:
+# &nbsp;   Power Status
 
 # 
 
-# &nbsp;   Mode Buttons (Focus, Pan, Tilt, Zoom): Select what the joystick and wheel will control.
+# &nbsp;   Current Input Source
 
 # 
 
-# &nbsp;   Speed Buttons (Fast/Slow): Select the active speed profile for PTZ movements.
+# &nbsp;   Brightness Level
 
 # 
 
-# &nbsp;   Wheel:
+# &nbsp;   Volume Level
 
 # 
 
-# &nbsp;       In Focus or Iris mode, the wheel directly adjusts the setting.
+# &nbsp;   Speaker Mute Status
 
 # 
 
-# &nbsp;       In a Speed mode, press and turn the wheel to change the speed value for the currently selected profile (Fast or Slow). The value is shown on the joystick's display.
+# &nbsp;   Microphone Mute Status
 
 # 
 
-# &nbsp;   Timeout: The joystick mode automatically reverts to its default state after 30 seconds of inactivity to prevent accidental adjustments.
+# &nbsp;   Video Freeze Status
 
 # 
 
-# Troubleshooting
+# &nbsp;   Screen Shade Status
 
 # 
 
-# The Debug\_fb$ string output is the primary tool for troubleshooting. Connect it to a "Serial/ASCII Send" symbol (or view it in SIMPL Debugger) to see:
+# This ensures that feedback signals are populated with the display's actual state shortly after startup, provided the display is responsive.
+
+# Power Control \& Transition Lock
 
 # 
 
-# &nbsp;   Formatted commands being sent to the camera.
+# The module features a robust locking mechanism to ensure stability during power state changes.
 
 # 
 
-# &nbsp;   Parsed responses received from the camera.
+# &nbsp;   Initiating a Change: When a power command (Power\_On\_trig, Power\_Off\_trig, etc.) is triggered, the module enters a "power transition" state.
 
 # 
 
-# &nbsp;   Connection status and error messages (e.g., timeouts).
+# &nbsp;   Command Lock: While in this state, all other commands (including other power commands) are ignored to prevent conflicts while the display is warming up or shutting down.
 
 # 
 
-# If the module fails to connect or control the camera, verify the IP Address and Port on the TCP/IP Client symbol and ensure the camera is on the network and accessible.
+# &nbsp;   Confirmation: The lock is only released when the module receives a specific asynchronous response (e.g., #powerstate=on) from the display, confirming the transition is complete.
+
+# 
+
+# &nbsp;   Timeout: A 20-second timeout acts as a fail-safe. If the expected confirmation is not received within this time, the lock is automatically released to prevent the module from getting stuck.
+
+# 
+
+# Sending Commands
+
+# 
+
+# To control the display, pulse the corresponding digital trigger input (e.g., Power\_On\_trig, Input\_Select\_HDMI1\_trig). For analog settings like brightness or volume, set the desired value on the analog input (e.g., Volume\_Level\_ain) and then pulse the associated trigger (e.g., Set\_Volume\_Level\_trig).
+
+# Querying Status
+
+# 
+
+# &nbsp;   Intelligent Polling: If Enable\_Polling is high, the module will query the power state at the defined interval. If the display is on, it will then proceed to query any other statuses that have their individual polling inputs (Poll\_Volume, etc.) set high. This prevents sending unnecessary commands to a display that is off. Polling is automatically paused during power transitions.
+
+# 
+
+# &nbsp;   Manual Query:
+
+# 
+
+# &nbsp;       To query a specific status (e.g., Firmware Version), pulse the corresponding query trigger (e.g., Query\_Firmware\_Version\_trig).
+
+# 
+
+# &nbsp;       To query all statuses at once, pulse Query\_All\_Status\_trig.
+
+# 
+
+# Response Handling
+
+# 
+
+# The module listens for responses from the display on the RS232\_rx$ input.
+
+# 
+
+# &nbsp;   Solicited Responses: Responses to get commands or set commands will update the relevant feedback signals and internal state.
+
+# 
+
+# &nbsp;   Asynchronous Responses: The display sends unsolicited status updates (prefixed with #) when a setting is changed locally or a state change is complete. The module uses these for real-time feedback, especially for confirming power state transitions.
+
+# 
+
+# TROUBLESHOOTING \& NOTES
+
+# 
+
+# &nbsp;   Communication Settings: Ensure the serial port connected to the SMART display is configured with the correct baud rate (typically 19200 for MX/QX series), parity (None), data bits (8), and stop bits (1) as specified by SMART for RS-232 control. (This module does not set COM port parameters; they must be configured in the Crestron program.)
+
+# 
+
+# &nbsp;   Wiring: Verify RS-232 wiring (TX, RX, GND) between the Crestron processor and the display. Ensure a straight-through serial cable is used, not a null-modem cable.
+
+# 
+
+# &nbsp;   Debug\_fb$ Output: This string output is crucial for troubleshooting. It provides information on:
+
+# 
+
+# &nbsp;       Module initialization.
+
+# 
+
+# &nbsp;       Commands being sent (implicitly).
+
+# 
+
+# &nbsp;       Raw or processed responses received.
+
+# 
+
+# &nbsp;       Polling activity.
+
+# 
+
+# &nbsp;       Timeout errors.
+
+# 
+
+# &nbsp;       Invalid or unknown commands reported by the display.
+
+# 
+
+# &nbsp;   Response Timeouts: If frequent timeouts occur, check physical connections, display responsiveness, COM port settings, and potential for excessive RS-232 bus traffic. The power transition timeout is set to 20 seconds.
+
+# 
+
+# &nbsp;   CR Terminator: All commands sent by this module are terminated with a Carriage Return (\\x0D). The module expects responses to also be CR-terminated and may strip Line Feeds (\\x0A).
+
+# 
+
+# &nbsp;   Polling and Performance: While polling provides up-to-date feedback, excessively fast polling rates (e.g., every 5-10 seconds) on a busy system or with a slow-responding device might impact performance. Adjust Poll\_Rate\_seconds as needed. The default of 15 seconds is generally a good balance.
+
+# 
+
+# &nbsp;   Power Saving Modes: Some displays have power-saving modes that might prevent them from responding to RS-232 commands when in a deep sleep state. It may be necessary to disable or adjust these modes on the display for reliable control.
+
+# 
+
+# &nbsp;   Standby Anomaly: This module contains specific logic to handle a known quirk where the display may respond with conflicting powerstate=standby and powerstate=on messages in the same data packet. If this occurs, the module will automatically retry the set powerstate=standby command after a 2-second delay.
 
